@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NammaSpace</title>
+<style>
+body{background:#101827;color:white;font-family:Arial;padding:15px}
+h1{color:#55d6be}
+.card{background:#1b2a40;padding:15px;margin:12px 0;border-radius:12px}
+input,button{padding:12px;margin:5px;border-radius:7px}
+button{background:#087f78;color:white;border:0}
+input{background:#101827;color:white;border:1px solid #567}
+canvas{width:100%;background:#26364c;border-radius:10px}
+</style>
+</head>
+<body>
+<h1>🏢 NammaSpace</h1>
+<p>Indoor Digital Twin and Navigation</p>
+
+<div class="card">
+<h3>Environment</h3>
+<canvas id="map" width="500" height="500"></canvas>
+</div>
+
+<div class="card">
+<h3>Search POI</h3>
+<input id="search" placeholder="Meeting Room A">
+<button onclick="searchPOI()">Search</button>
+<div id="results"></div>
+</div>
+
+<div class="card">
+<h3>Navigation</h3>
+<p id="status">Select a destination.</p>
+<button onclick="navigate()">Calculate Route</button>
+</div>
+
+<div class="card">
+<h3>Add POI</h3>
+<input id="name" placeholder="Room name">
+<input id="x" type="number" placeholder="X coordinate">
+<input id="z" type="number" placeholder="Z coordinate">
+<button onclick="addPOI()">Add POI</button>
+</div>
+
+<script>
+let pois=[],grid=[],selected=null,route=[];
+
+async function load(){
+let a=await fetch('/api/grid');
+grid=(await a.json()).grid;
+let b=await fetch('/api/pois');
+pois=(await b.json()).pois;
+draw();
+}
+
+function draw(){
+let c=document.getElementById('map');
+let ctx=c.getContext('2d');
+ctx.clearRect(0,0,500,500);
+let s=50;
+for(let x=0;x<10;x++){
+for(let z=0;z<10;z++){
+ctx.fillStyle=grid[x][z]?'#bc6654':'#53677f';
+ctx.fillRect(z*s,x*s,s-2,s-2);
+}
+}
+pois.forEach(p=>{
+ctx.fillStyle='#55e4bf';
+ctx.beginPath();
+ctx.arc((p.z+.5)*s,(p.x+.5)*s,9,0,Math.PI*2);
+ctx.fill();
+});
+if(route.length){
+ctx.strokeStyle='#00ffff';
+ctx.lineWidth=5;
+ctx.beginPath();
+route.forEach((p,i)=>{
+let px=(p[1]+.5)*s,py=(p[0]+.5)*s;
+if(!i)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+});
+ctx.stroke();
+}
+}
+
+async function searchPOI(){
+let q=encodeURIComponent(document.getElementById('search').value);
+let d=await(await fetch('/api/search?q='+q)).json();
+let box=document.getElementById('results');
+box.innerHTML='';
+d.results.forEach(p=>{
+let b=document.createElement('button');
+b.textContent=p.name;
+b.onclick=()=>{
+selected=p;
+document.getElementById('status').textContent='Destination: '+p.name;
+};
+box.appendChild(b);
+});
+}
+
+async function navigate(){
+if(!selected)return alert('Select a destination first');
+let d=await(await fetch('/api/route',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({start:[0,0],end:[selected.x,selected.z]})
+})).json();
+route=d.path||[];
+document.getElementById('status').textContent=
+d.success?'Route found: '+d.distance+' units':'No route available';
+draw();
+}
+
+async function addPOI(){
+let p={
+name:document.getElementById('name').value,
+category:'General',
+x:Number(document.getElementById('x').value),
+z:Number(document.getElementById('z').value)
+};
+let r=await fetch('/api/pois',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify(p)
+});
+let d=await r.json();
+if(!r.ok)return alert(d.error);
+await load();
+}
+
+load();
+</script>
+</body>
+</html>
